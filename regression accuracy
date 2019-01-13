@@ -1,0 +1,61 @@
+import pandas as pd
+import quandl
+from api_quandl import api
+import datetime
+import matplotlib.pyplot as plt
+from  matplotlib import style
+import math
+import numpy as np
+from sklearn import preprocessing,model_selection,svm
+from sklearn.linear_model import LinearRegression
+style.use('ggplot')
+#starts=datetime.datetime(2006,1,1)
+#ends=datetime.datetime(2017,1,1)
+quandl_data=quandl.get('EOD/MSFT',start_date="2010-1-1",end_date="2019-1-4",paginate=True)
+#w=quandl_data('EOD/MSFT',start_date="2001-12-31",end_date="2005-12-31",paginate=True)
+#plt.plot_date(quandl_data)
+#plt.show()
+
+#quandl_data=quandl.get('EOD/MSFT')
+#print(quandl_data)
+quandl_data=quandl_data[['Adj_Open','Adj_High','Adj_Low','Adj_Close','Adj_Volume']]
+quandl_data['HL_PCT']=(quandl_data['Adj_High']-quandl_data['Adj_Close'])/quandl_data['Adj_Close']*100.0
+quandl_data['Change']=(quandl_data['Adj_Close']-quandl_data['Adj_Open'])/quandl_data['Adj_Open']*100.0
+quandl_data=quandl_data[['Adj_Close','HL_PCT','Change','Adj_Volume']]
+forecaset_col='Adj_Close'
+quandl_data.fillna(-99999,inplace=True)
+forecast_out=int(math.ceil(0.01*len(quandl_data)))
+print(forecast_out)
+quandl_data['label']=quandl_data[forecaset_col].shift(-forecast_out)
+#print(quandl_data.head())
+X=np.array(quandl_data.drop(['label'],1))
+X=preprocessing.scale(X)
+X=X[:-forecast_out]
+
+X_lately=X[-forecast_out:]
+quandl_data.dropna(inplace=True)
+y=np.array(quandl_data['label'])
+#print(len(X),len(y))
+X_train,X_test,y_train,y_test=model_selection.train_test_split(X,y,test_size=0.2)
+clf=LinearRegression(n_jobs=-1)
+clf.fit(X_train,y_train)
+accuracy=clf.score(X_test,y_test)
+#print(accuracy)
+forecast_set=clf.predict(X_lately)
+print(forecast_set,accuracy,forecast_out)
+quandl_data['Forecast']=np.nan
+last_date=quandl_data.iloc[-1].name
+last_unix=last_date.timestamp()
+one_day=86400
+next_unix=last_unix + one_day
+for i in forecast_set:
+    next_date=datetime.datetime.fromtimestamp(next_unix)
+    next_unix += one_day
+    quandl_data.loc[next_date]=[np.nan for _ in range(len(quandl_data.columns) - 1)] + [i]
+print(quandl_data.head())
+quandl_data['Adj_Close'].plot()
+quandl_data['Forecast'].plot()
+plt.legend(loc=4)
+plt.xlabel('Date')
+plt.ylabel('Price')
+plt.show()
